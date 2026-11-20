@@ -56,7 +56,14 @@
     Object.assign({}, good),
   ] };
 
-  const samples = { gtm, events, server, catalogMeta };
+  const match = [
+    { event_name: 'ViewContent', custom_data: { content_ids: ['SKU-1'], content_type: 'product' } },
+    { event_name: 'AddToCart', custom_data: { contents: [{ id: 'SKU-2', quantity: 1, item_price: 24.99 }], content_type: 'product' } },
+    { event_name: 'Purchase', custom_data: { content_ids: ['sku-3', '12345'], content_type: 'product', value: 60, currency: 'EUR' } },
+    { event_name: 'Purchase', custom_data: { content_ids: ['SKU-1'], value: 49.9, currency: 'EUR' } },
+    { event_name: 'AddToCart', custom_data: { value: 10, currency: 'EUR' } },
+  ];
+  const samples = { gtm, events, server, match, catalogMeta };
   if (typeof module !== 'undefined' && module.exports) module.exports = samples;
   else root.SAMPLES = samples;
 })(typeof window !== 'undefined' ? window : globalThis);

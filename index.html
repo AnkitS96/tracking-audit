@@ -43,6 +43,7 @@
     <button role="tab" aria-selected="true" data-tab="gtm">GTM container</button>
     <button role="tab" aria-selected="false" data-tab="events">Browser and server events</button>
     <button role="tab" aria-selected="false" data-tab="server">Server payload (CAPI)</button>
+    <button role="tab" aria-selected="false" data-tab="match">Events vs catalog</button>
     <button role="tab" aria-selected="false" data-tab="catalog">Product catalog</button>
   </div>
 
@@ -64,6 +65,15 @@
     <p class="hint">The JSON body you send to the Conversions API ({"data":[...]}). Checks event time, action source, event_id, hashing, IP and user agent, cookies, test_event_code and purchase fields. Use made up data only: it contains personal data fields.</p>
     <textarea data-input placeholder='{"data":[{"event_name":"Purchase","event_time":1700000000,"event_id":"o-1","action_source":"website"}]}'></textarea>
     <div class="row"><input type="file" accept=".json" data-file><button data-sample>Load sample</button><button class="primary" data-run>Run audit</button></div>
+    <div data-out></div>
+  </section>
+
+  <section class="panel" id="match" hidden>
+    <p class="hint">Do the product ids in your events exist in your catalog? Paste events (a list, or a Conversions API body) first, then the catalog CSV. Catches wrong ids, upper and lower case, product id versus variant id, and price differences.</p>
+    <textarea data-input placeholder='[{"event_name":"Purchase","custom_data":{"content_ids":["SKU-1"],"content_type":"product"}}]'></textarea>
+    <div class="row"><label for="platform2">Platform</label><select id="platform2"><option value="meta">Meta</option><option value="tiktok">TikTok</option><option value="snapchat">Snapchat</option></select> <input type="file" accept=".json" data-file></div>
+    <textarea data-input2 placeholder="id,title,price,..."></textarea>
+    <div class="row"><input type="file" accept=".csv" data-file2><button data-sample>Load sample</button><button class="primary" data-run>Run audit</button></div>
     <div data-out></div>
   </section>
 
@@ -90,12 +100,14 @@
     gtm: (text) => A.auditGtm(JSON.parse(text)),
     events: (text) => A.auditEvents(JSON.parse(text)),
     server: (text) => A.auditServer(JSON.parse(text)),
+    match: (text, text2) => A.auditMatch(JSON.parse(text), text2, document.getElementById('platform2').value),
     catalog: (text) => A.auditCatalog(text, document.getElementById('platform').value),
   };
   const samples = {
     gtm: () => JSON.stringify(S.gtm, null, 2),
     events: () => JSON.stringify(S.events, null, 2),
     server: () => JSON.stringify(S.server, null, 2),
+    match: () => JSON.stringify(S.match, null, 2),
     catalog: () => S.catalogMeta,
   };
 
@@ -113,11 +125,13 @@
   }));
 
   document.querySelectorAll('.panel').forEach((panel) => {
-    const input = panel.querySelector('[data-input]');
-    panel.querySelector('[data-sample]').addEventListener('click', () => { input.value = samples[panel.id](); panel.querySelector('[data-run]').click(); });
+    const input = panel.querySelector('[data-input]'), input2 = panel.querySelector('[data-input2]');
+    panel.querySelector('[data-sample]').addEventListener('click', () => { input.value = samples[panel.id](); if (input2) input2.value = S.catalogMeta; panel.querySelector('[data-run]').click(); });
     panel.querySelector('[data-file]').addEventListener('change', (e) => { const r = new FileReader(); r.onload = () => { input.value = r.result; }; if (e.target.files[0]) r.readAsText(e.target.files[0]); });
+    const file2 = panel.querySelector('[data-file2]');
+    if (file2) file2.addEventListener('change', (e) => { const rd = new FileReader(); rd.onload = () => { input2.value = rd.result; }; if (e.target.files[0]) rd.readAsText(e.target.files[0]); });
     panel.querySelector('[data-run]').addEventListener('click', () => {
-      try { show(panel, runners[panel.id](input.value)); }
+      try { show(panel, runners[panel.id](input.value, input2 && input2.value)); }
       catch (err) { panel.querySelector('[data-out]').innerHTML = `<ul class="findings"><li class="error"><span class="tag">error</span>Could not read the input: ${esc(err.message)}</li></ul>`; }
     });
   });

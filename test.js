@@ -51,6 +51,19 @@ assert(!sv.some((x) => x.where.startsWith('event 1 ') && x.severity === 'error')
 assert(!JSON.stringify(sv).includes('anna@shop.example'), 'findings never echo personal data');
 assert(has(A.auditServer([{ event_name: 'Lead', event_time: 5, user_data: { em: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' } }], 100), 'hashed-empty'), 'hash of empty value');
 
+// Events against catalog
+const mt = A.auditMatch(S.match, S.catalogMeta, 'meta');
+assert(has(mt, 'id-case', 'SKU-3'), 'case mismatch');
+assert(has(mt, 'id-not-in-catalog', '12345'), 'unknown id');
+assert(has(mt, 'price-mismatch', 'SKU-2'), 'price differs');
+assert(has(mt, 'no-content-type'), 'no content_type');
+assert(has(mt, 'no-content-ids', '1 product event'), 'event without ids');
+assert(has(mt, 'match-summary', '2 of 4'), 'summary counts');
+assert(!has(mt, 'id-not-in-catalog', 'SKU-1'), 'good id is fine');
+const variantCsv = 'id,price\nSHIRT-M,10.00 EUR\nSHIRT-L,10.00 EUR';
+assert(has(A.auditMatch([{ event_name: 'Purchase', custom_data: { content_ids: ['SHIRT'], content_type: 'product' } }], variantCsv, 'meta'), 'id-not-in-catalog', 'SHIRT-M'), 'product id versus variant id hint');
+assert(has(A.auditMatch({ data: [{ event_name: 'Purchase', custom_data: { content_ids: [123], content_type: 'product' } }] }, 'id,price\n123,5 EUR', 'meta'), 'match-summary', '1 of 1'), 'numeric id and CAPI body');
+
 // Catalog
 const cat = A.auditCatalog(S.catalogMeta, 'meta');
 assert(has(cat, 'bad-value', 'available'), 'bad availability');

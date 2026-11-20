@@ -257,13 +257,56 @@
     return out;
   }
 
+  // ---------- Events against the catalog (do content_ids exist?) ----------
+  // events: a Conversions API body ({"data":[...]}) or a list of events. Product ids are read from custom_data (or the event itself): content_ids and contents[].id.
+  function auditMatch(events, csv, platform) {
+    const out = [];
+    const list = Array.isArray(events) ? events : events && events.data;
+    if (!Array.isArray(list) || !list.length) return [f('warning', 'no-events', 'No events found. Paste a list of events or a Conversions API body.')];
+    const { headers, rows } = parseCsv(csv);
+    const idCol = platform === 'tiktok' ? 'sku_id' : 'id';
+    if (!rows.length || !headers.includes(idCol)) return [f('error', 'catalog', `The catalog needs a header row with an "${idCol}" column.`)];
+    const byId = {}, lower = {};
+    rows.forEach((r) => { if (!byId[r[idCol]]) byId[r[idCol]] = r; lower[r[idCol].toLowerCase()] = r[idCol]; });
+    const ids = Object.keys(byId);
+    const seen = new Set(), matched = new Set();
+    let noIds = 0;
+    list.forEach((e, i) => {
+      const c = e.custom_data || e;
+      const where = `event ${i + 1} (${e.event_name || 'no name'})`;
+      const items = {};
+      [].concat(c.content_ids || []).forEach((id) => { items[String(id)] = items[String(id)] || {}; });
+      (Array.isArray(c.contents) ? c.contents : []).forEach((x) => { if (x && x.id !== undefined) items[String(x.id)] = { price: x.item_price }; });
+      const keys = Object.keys(items);
+      if (!keys.length) { if (/^(ViewContent|AddToCart|Purchase|InitiateCheckout)$/.test(e.event_name || '')) noIds++; return; }
+      if (!c.content_type) out.push(f('warning', 'no-content-type', 'content_ids are sent without content_type ("product" or "product_group"). The platform may not match them to the catalog.', where));
+      keys.forEach((id) => {
+        seen.add(id);
+        const clean = id.trim();
+        if (byId[clean]) {
+          matched.add(id);
+          const p = parseFloat(byId[clean].price), ip = Number(items[id].price);
+          if (items[id].price !== undefined && isFinite(p) && isFinite(ip) && Math.abs(p - ip) > 0.01) out.push(f('warning', 'price-mismatch', `"${id}" is sent with item_price ${ip} but the catalog price is ${p}.`, where));
+          if (id !== clean) out.push(f('warning', 'id-whitespace', `content id "${id}" has spaces around it. It only matches after trimming.`, where));
+        } else if (lower[clean.toLowerCase()]) out.push(f('error', 'id-case', `content id "${id}" only matches catalog id "${lower[clean.toLowerCase()]}" if upper and lower case are ignored. Platforms compare them exactly.`, where));
+        else {
+          const kin = ids.filter((x) => x.startsWith(clean + '-') || x.startsWith(clean + '_') || clean.startsWith(x + '-') || clean.startsWith(x + '_'));
+          out.push(f('error', 'id-not-in-catalog', `content id "${id}" is not in the catalog.` + (kin.length ? ` Similar catalog ids: ${kin.slice(0, 3).join(', ')}. Is the event sending a product id where the catalog uses a variant id, or the other way round?` : ''), where));
+        }
+      });
+    });
+    if (noIds) out.push(f('warning', 'no-content-ids', `${noIds} product event(s) (ViewContent, AddToCart, InitiateCheckout, Purchase) have no content_ids. They cannot feed catalog ads.`));
+    out.push(f('info', 'match-summary', `${matched.size} of ${seen.size} distinct product id(s) in the events exist in the catalog (${ids.length} products).`));
+    return out;
+  }
+
   function summarize(findings) {
     const s = { error: 0, warning: 0, info: 0 };
     findings.forEach((x) => s[x.severity]++);
     return s;
   }
 
-  const api = { auditGtm, auditEvents, auditServer, auditCatalog, parseCsv, summarize };
+  const api = { auditGtm, auditEvents, auditServer, auditMatch, auditCatalog, parseCsv, summarize };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TrackingAudit = api;
 })(typeof window !== 'undefined' ? window : globalThis);
