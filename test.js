@@ -12,6 +12,16 @@ assert(has(gtm, 'tag-no-trigger', 'TikTok - Complete Payment'), 'tag without tri
 assert(has(gtm, 'multiple-init', '111222333'), 'pixel initialised twice');
 assert(has(gtm, 'tag-paused'), 'paused tag');
 assert(!has(gtm, 'duplicate-event', 'snapchat'), 'single Snap purchase is fine');
+assert(!has(gtm, 'duplicate-event', 'ga4'), 'single GA4 purchase is fine');
+assert(has(gtm, 'undefined-variable', 'Order total'), 'undefined variable');
+assert(!has(gtm, 'undefined-variable', 'Order value'), 'defined variable is fine');
+assert(has(gtm, 'firing-unlimited', 'Meta - Purchase'), 'unlimited firing on purchase');
+assert(has(gtm, 'trigger-too-broad', 'Meta - Lead'), 'lead on every page');
+assert(!has(gtm, 'trigger-too-broad', 'Meta - Purchase'), 'purchase trigger has a condition');
+assert(has(gtm, 'no-consent-settings', 'Meta - Purchase'), 'no consent settings');
+assert(!has(gtm, 'no-consent-settings', 'Meta Pixel - Base"'), 'consent set on base tag');
+assert(has(gtm, 'tag-not-read', 'Meta (gallery template)'), 'template tag not silently passed');
+assert(has(A.auditGtm({ tag: [{ name: 'X', firingTriggerId: ['99'], parameter: [{ key: 'html', value: "fbq('track','Lead');" }] }] }), 'trigger-missing'), 'missing trigger');
 
 // Events
 const ev = A.auditEvents(S.events);

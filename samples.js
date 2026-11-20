@@ -4,14 +4,18 @@
 
   const gtm = {
     containerVersion: {
-      trigger: [{ triggerId: '1', name: 'All Pages' }, { triggerId: '2', name: 'Purchase event' }],
+      variable: [{ name: 'Order value' }, { name: 'Order ID' }],
+      trigger: [{ triggerId: '1', name: 'All Pages', type: 'PAGEVIEW' }, { triggerId: '2', name: 'Purchase event', type: 'CUSTOM_EVENT', customEventFilter: [{ type: 'EQUALS' }] }],
       tag: [
-        tag('Meta Pixel - Base', "fbq('init','111222333'); fbq('track','PageView');", ['1']),
-        tag('Meta - Purchase', "fbq('track','Purchase',{value:{{Order value}},currency:'EUR'},{eventID:{{Order ID}}});", ['2']),
+        tag('Meta Pixel - Base', "fbq('init','111222333'); fbq('track','PageView');", ['1'], { consentSettings: { consentStatus: 'NEEDED' } }),
+        tag('Meta - Purchase', "fbq('track','Purchase',{value:{{Order value}},currency:'EUR'},{eventID:{{Order ID}}});", ['2'], { tagFiringOption: 'UNLIMITED' }),
         tag('Meta - Purchase (copy)', "fbq('track','Purchase',{value:{{Order value}},currency:'EUR'},{eventID:{{Order ID}}});", ['2']),
         tag('Meta Pixel - Base (old)', "fbq('init','111222333');", ['1']),
         tag('TikTok - Complete Payment', "ttq.track('CompletePayment',{value:{{Order value}},currency:'EUR'});", []),
-        tag('Snap - Purchase', "snaptr('track','PURCHASE',{price:{{Order value}},currency:'EUR'});", ['2']),
+        tag('Snap - Purchase', "snaptr('track','PURCHASE',{price:{{Order total}},currency:'EUR'});", ['2']),
+        tag('Meta - Lead', "fbq('track','Lead');", ['1']),
+        { name: 'GA4 - purchase', type: 'gaawe', parameter: [{ key: 'eventName', value: 'purchase' }], firingTriggerId: ['2'] },
+        { name: 'Meta (gallery template)', type: 'cvt_123_456', parameter: [{ key: 'pixelId', value: '111222333' }], firingTriggerId: ['2'] },
         tag('TikTok - Old test', "ttq.track('ViewContent');", ['1'], { paused: true }),
       ],
     },

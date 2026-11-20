@@ -10,7 +10,7 @@ I built it because the same mistakes keep costing advertisers money: an event se
 
 | Check | Input | Finds |
 |---|---|---|
-| GTM container | Container export (JSON) | The same event sent twice on one trigger, tags with no trigger, a pixel initialised in more than one tag, paused tags. Looks for Meta, TikTok, Snapchat and LinkedIn tags |
+| GTM container | Container export (JSON) | The same event sent twice on one trigger, tags with no trigger or a missing trigger, a pixel initialised twice, paused tags, variables used but not defined, purchase or lead tags on a trigger with no condition (every page), conversion tags with unlimited firing, tags with no consent settings. Reads Meta, TikTok, Snapchat and LinkedIn code, and GA4 and gallery template tags that have an event name parameter |
 | Browser and server events | JSON list of events | Missing or duplicate `event_id` (deduplication), server events with no browser twin, non standard event names and wrong case, purchases with a missing or non numeric value or a bad currency |
 | Product catalog | CSV feed | Missing columns, empty required values, duplicate IDs, prices not in the "19.99 EUR" format, non https links, invalid availability or condition values (Meta) |
 
@@ -28,6 +28,7 @@ Run the tests with `node test.js`. They check every rule against the sample data
 ## Limits, stated plainly
 
 - **Starter rules.** The rules live in plain tables at the top of `audit.js`. Platform requirements change, so check them against each platform's current documentation before relying on them. Meta is the most complete. TikTok and Snapchat are starter rules. LinkedIn has no product catalog check.
+- **Template tags.** Gallery tags that store no readable event name are listed as "not read" instead of passing silently. Field names such as `tagFiringOption` and `consentSettings` are written from memory and the tool has not yet been run on a real container export.
 - **Heuristics, not a crawler.** The GTM check reads tag code for `fbq`, `ttq`, `snaptr` and `lintrk` calls. It does not run your site and does not see server side containers.
 - **No live platform connection.** It does not read data from Meta, TikTok or any other platform.
 - **Made up data only.** Never paste data containing customer information.

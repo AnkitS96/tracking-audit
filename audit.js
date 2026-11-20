@@ -11,33 +11,73 @@
     { id: 'snapchat', has: /snaptr\s*\(/, track: /snaptr\s*\(\s*['"]track['"]\s*,\s*['"]([^'"]+)['"]/g, init: /snaptr\s*\(\s*['"]init['"]\s*,\s*['"]([^'"]+)['"]/g },
     { id: 'linkedin', has: /lintrk\s*\(/, track: /conversion_id\s*:\s*['"]?(\d+)/g, init: /_linkedin_partner_id\s*=\s*['"]?(\d+)/g },
   ];
+  // Gallery/template tags have no code to read. Guess the platform from type or name, and read an event name parameter if there is one.
+  const TEMPLATE_PLATFORMS = [['meta', /meta|facebook|fbq/i], ['tiktok', /tiktok/i], ['snapchat', /snap/i], ['linkedin', /linkedin/i], ['ga4', /ga4|gaawe|google analytics/i]];
+  const EVENT_PARAM = /^(eventName|event_name|standardEventName|eventType)$/;
+  const CONVERSION = /^(purchase|completepayment|lead|completeregistration|signup|sign_up|submitform|generate_lead)$/i;
+  const BUILTIN_VARS = ['Page URL', 'Page Hostname', 'Page Path', 'Referrer', 'Event', 'Environment Name', 'Container ID', 'Container Version', 'Random Number', 'Debug Mode', 'Click Element', 'Click Classes', 'Click ID', 'Click Target', 'Click URL', 'Click Text', 'Form Element', 'Form Classes', 'Form ID', 'Form Target', 'Form URL', 'Form Text', 'New History Fragment', 'Old History Fragment', 'New History State', 'Old History State', 'History Source', 'Error Message', 'Error URL', 'Error Line', 'Video Title', 'Video Provider', 'Scroll Depth Threshold'];
 
   function auditGtm(input) {
     const out = [];
     const cv = (input && input.containerVersion) || input || {};
     const tags = cv.tag || [];
     const triggers = cv.trigger || [];
-    const trig = (id) => (triggers.find((t) => String(t.triggerId) === String(id)) || {}).name || 'trigger ' + id;
+    const defined = new Set(BUILTIN_VARS.concat((cv.variable || []).map((v) => v.name)));
+    const triggerOf = (id) => triggers.find((t) => String(t.triggerId) === String(id));
+    const trig = (id) => (triggerOf(id) || {}).name || 'trigger ' + id;
     if (!tags.length) return [f('warning', 'no-tags', 'No tags found. Is this a Google Tag Manager container export (JSON)?')];
 
     const fired = {}; // platform|event|trigger -> tag names
     const inits = {}; // platform|pixel id -> tag names
+    const notRead = [];
     tags.forEach((tag) => {
-      const html = (tag.parameter || []).filter((p) => p.key === 'html').map((p) => p.value).join('\n');
+      const params = tag.parameter || [];
+      const html = params.filter((p) => p.key === 'html').map((p) => p.value).join('\n');
       const triggersOf = tag.firingTriggerId || [];
       if (tag.paused) out.push(f('info', 'tag-paused', `Tag "${tag.name}" is paused.`, tag.name));
       else if (!triggersOf.length) out.push(f('error', 'tag-no-trigger', `Tag "${tag.name}" has no firing trigger, so it never fires.`, tag.name));
       if (tag.paused) return;
+
+      // what does this tag send?
+      const events = []; // { platform, event }
       PLATFORMS.forEach((p) => {
-        if (!p.has.test(html)) return;
+        if (!html || !p.has.test(html)) return;
         for (const m of html.matchAll(p.init)) (inits[p.id + '|' + m[1]] = inits[p.id + '|' + m[1]] || []).push(tag.name);
-        for (const m of html.matchAll(p.track)) {
-          triggersOf.forEach((tid) => {
-            const k = [p.id, m[1], tid].join('|');
-            (fired[k] = fired[k] || []).push(tag.name);
-          });
-        }
+        for (const m of html.matchAll(p.track)) events.push({ platform: p.id, event: m[1] });
       });
+      if (!html) {
+        const ev = params.find((p) => EVENT_PARAM.test(p.key) && typeof p.value === 'string');
+        const plat = (TEMPLATE_PLATFORMS.find(([, re]) => re.test(tag.type + ' ' + tag.name)) || ['other'])[0];
+        if (ev) events.push({ platform: plat, event: ev.value });
+        else notRead.push(tag.name);
+      }
+
+      // variables that do not exist
+      const text = html || JSON.stringify(params);
+      new Set([...text.matchAll(/\{\{([^}]+)\}\}/g)].map((m) => m[1].trim())).forEach((v) => {
+        if (!defined.has(v)) out.push(f('error', 'undefined-variable', `Tag "${tag.name}" uses {{${v}}}, which is not defined in this container. It will send an empty value.`, tag.name));
+      });
+
+      triggersOf.forEach((tid) => {
+        const t = triggerOf(tid);
+        if (!t && Number(tid) < 2147000000) out.push(f('error', 'trigger-missing', `Tag "${tag.name}" points to trigger ${tid}, which does not exist.`, tag.name));
+        events.forEach((e) => { const k = [e.platform, e.event, tid].join('|'); (fired[k] = fired[k] || []).push(tag.name); });
+      });
+
+      if (!events.length) return;
+      // conversion tags: how often and when can they fire?
+      const conv = events.filter((e) => e.platform === 'linkedin' || CONVERSION.test(e.event));
+      conv.forEach((e) => {
+        if (tag.tagFiringOption === 'UNLIMITED') out.push(f('warning', 'firing-unlimited', `Tag "${tag.name}" sends ${e.platform} "${e.event}" with firing option "unlimited". It can fire more than once per page, so one order could count twice. Use "once per event".`, tag.name));
+        triggersOf.forEach((tid) => {
+          const t = triggerOf(tid);
+          const everyPage = (tid === '2147479553') || (t && /^(PAGEVIEW|DOM_READY|WINDOW_LOADED)$/.test(t.type || '') && !(t.filter || []).length);
+          if (everyPage) out.push(f('error', 'trigger-too-broad', `Tag "${tag.name}" sends ${e.platform} "${e.event}" on trigger "${trig(tid)}", which has no condition, so it fires on every page. Use a trigger that only fires on the order confirmation.`, tag.name));
+        });
+      });
+      if (!tag.consentSettings || !tag.consentSettings.consentStatus || tag.consentSettings.consentStatus === 'NOT_SET') {
+        out.push(f('warning', 'no-consent-settings', `Tag "${tag.name}" has no consent settings. If the visitor has not agreed yet, it may still fire, which is a problem under GDPR and Consent Mode. Ignore this if a consent trigger already blocks it.`, tag.name));
+      }
     });
 
     Object.entries(fired).forEach(([k, names]) => {
@@ -51,7 +91,8 @@
       const [p, id] = k.split('|');
       out.push(f('warning', 'multiple-init', `${p} pixel ${id} is initialised in ${names.length} tags (${names.join(', ')}). Initialise it once.`, names.join(', ')));
     });
-    if (!out.some((x) => x.severity === 'error')) out.push(f('info', 'gtm-ok', `Checked ${tags.length} tags: no duplicate events or dead tags found.`));
+    if (notRead.length) out.push(f('info', 'tag-not-read', `${notRead.length} template tag(s) have no readable event name (${notRead.join(', ')}), so they were not checked for duplicates. Check them by hand.`, notRead.join(', ')));
+    if (!out.some((x) => x.severity === 'error')) out.push(f('info', 'gtm-ok', `Read ${tags.length - notRead.length} of ${tags.length} tags: no errors found in those.`));
     return out;
   }
 
