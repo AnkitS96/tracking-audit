@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracking Audit: pixel, Conversions API and catalog checks</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#5b6470; --line:#d9dee5; --bg:#f6f8fa; --accent:#2b4a6f; --err:#b3261e; --warn:#9a6700; --info:#2b4a6f; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
+  main { max-width: 880px; margin: 0 auto; padding: 28px 18px 60px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .tabs { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+  .tabs button { padding:8px 14px; border:1px solid var(--line); background:#fff; border-radius:8px; cursor:pointer; font:inherit; }
+  .tabs button[aria-selected="true"] { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .panel[hidden] { display:none; }
+  p.hint { margin:0 0 10px; color:var(--muted); font-size:14px; }
+  textarea { width:100%; min-height:150px; font:13px/1.4 ui-monospace, Consolas, monospace; border:1px solid var(--line); border-radius:8px; padding:10px; resize:vertical; }
+  .row { display:flex; gap:8px; align-items:center; margin:10px 0; flex-wrap:wrap; }
+  .row button { padding:8px 14px; border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer; font:inherit; }
+  .row button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  select { padding:7px; border-radius:8px; border:1px solid var(--line); font:inherit; }
+  .summary { display:flex; gap:10px; margin:14px 0 8px; font-weight:600; }
+  .pill { padding:3px 10px; border-radius:999px; font-size:13px; }
+  .pill.error { background:#fdecea; color:var(--err); } .pill.warning { background:#fff4d6; color:var(--warn); } .pill.info { background:#e6eef7; color:var(--info); }
+  ul.findings { list-style:none; margin:0; padding:0; }
+  ul.findings li { border:1px solid var(--line); border-left-width:4px; border-radius:6px; padding:8px 10px; margin:6px 0; background:#fff; }
+  li.error { border-left-color:var(--err); } li.warning { border-left-color:var(--warn); } li.info { border-left-color:var(--info); }
+  .tag { font-size:11px; text-transform:uppercase; letter-spacing:.04em; font-weight:700; margin-right:6px; }
+  li.error .tag { color:var(--err); } li.warning .tag { color:var(--warn); } li.info .tag { color:var(--info); }
+  .where { display:block; color:var(--muted); font-size:12.5px; margin-top:2px; }
+  footer { margin-top:26px; color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tracking Audit</h1>
+  <p class="sub">Paste or upload tracking data and get a plain English list of what is wrong. Runs in your browser; nothing is uploaded anywhere.</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="gtm">GTM container</button>
+    <button role="tab" aria-selected="false" data-tab="events">Browser and server events</button>
+    <button role="tab" aria-selected="false" data-tab="catalog">Product catalog</button>
+  </div>
+
+  <section class="panel" id="gtm">
+    <p class="hint">Export from Tag Manager: Admin, Export Container, then paste the JSON. Finds events sent twice, tags that never fire, and pixels initialised twice (Meta, TikTok, Snapchat, LinkedIn).</p>
+    <textarea data-input placeholder="Paste container JSON here"></textarea>
+    <div class="row"><input type="file" accept=".json" data-file><button data-sample>Load sample</button><button class="primary" data-run>Run audit</button></div>
+    <div data-out></div>
+  </section>
+
+  <section class="panel" id="events" hidden>
+    <p class="hint">A JSON list of events with platform, event_name, source ("browser" or "server"), event_id, value and currency. Checks deduplication, event names, and purchase values.</p>
+    <textarea data-input placeholder='[{"platform":"meta","event_name":"Purchase","source":"browser","event_id":"o-1","value":49.9,"currency":"EUR"}]'></textarea>
+    <div class="row"><input type="file" accept=".json" data-file><button data-sample>Load sample</button><button class="primary" data-run>Run audit</button></div>
+    <div data-out></div>
+  </section>
+
+  <section class="panel" id="catalog" hidden>
+    <p class="hint">A product feed as CSV with a header row. Meta rules are the most complete; TikTok and Snapchat are starter rules.</p>
+    <div class="row"><label for="platform">Platform</label>
+      <select id="platform"><option value="meta">Meta</option><option value="tiktok">TikTok</option><option value="snapchat">Snapchat</option></select></div>
+    <textarea data-input placeholder="id,title,description,availability,condition,price,link,image_link,brand"></textarea>
+    <div class="row"><input type="file" accept=".csv" data-file><button data-sample>Load sample</button><button class="primary" data-run>Run audit</button></div>
+    <div data-out></div>
+  </section>
+
+  <footer>Sample data is made up. The rules are starter rules: check them against each platform's current documentation before relying on them. Built by Ankit Singh.</footer>
+</main>
+
+<script src="audit.js"></script>
+<script src="samples.js"></script>
+<script>
+  const A = window.TrackingAudit, S = window.SAMPLES;
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const order = { error: 0, warning: 1, info: 2 };
+
+  const runners = {
+    gtm: (text) => A.auditGtm(JSON.parse(text)),
+    events: (text) => A.auditEvents(JSON.parse(text)),
+    catalog: (text) => A.auditCatalog(text, document.getElementById('platform').value),
+  };
+  const samples = {
+    gtm: () => JSON.stringify(S.gtm, null, 2),
+    events: () => JSON.stringify(S.events, null, 2),
+    catalog: () => S.catalogMeta,
+  };
+
+  function show(panel, findings) {
+    const s = A.summarize(findings);
+    findings.sort((a, b) => order[a.severity] - order[b.severity]);
+    panel.querySelector('[data-out]').innerHTML =
+      `<div class="summary"><span class="pill error">${s.error} errors</span><span class="pill warning">${s.warning} warnings</span><span class="pill info">${s.info} notes</span></div>` +
+      `<ul class="findings">${findings.map((x) => `<li class="${x.severity}"><span class="tag">${x.severity}</span>${esc(x.message)}${x.where ? `<span class="where">${esc(x.where)}</span>` : ''}</li>`).join('')}</ul>`;
+  }
+
+  document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach((x) => x.setAttribute('aria-selected', x === b));
+    document.querySelectorAll('.panel').forEach((p) => (p.hidden = p.id !== b.dataset.tab));
+  }));
+
+  document.querySelectorAll('.panel').forEach((panel) => {
+    const input = panel.querySelector('[data-input]');
+    panel.querySelector('[data-sample]').addEventListener('click', () => { input.value = samples[panel.id](); panel.querySelector('[data-run]').click(); });
+    panel.querySelector('[data-file]').addEventListener('change', (e) => { const r = new FileReader(); r.onload = () => { input.value = r.result; }; if (e.target.files[0]) r.readAsText(e.target.files[0]); });
+    panel.querySelector('[data-run]').addEventListener('click', () => {
+      try { show(panel, runners[panel.id](input.value)); }
+      catch (err) { panel.querySelector('[data-out]').innerHTML = `<ul class="findings"><li class="error"><span class="tag">error</span>Could not read the input: ${esc(err.message)}</li></ul>`; }
+    });
+  });
+</script>
+</body>
+</html>
