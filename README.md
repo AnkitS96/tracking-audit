@@ -12,6 +12,7 @@ I built it because the same mistakes keep costing advertisers money: an event se
 |---|---|---|
 | GTM container | Container export (JSON) | The same event sent twice on one trigger, tags with no trigger or a missing trigger, a pixel initialised twice, paused tags, variables used but not defined, purchase or lead tags on a trigger with no condition (every page), conversion tags with unlimited firing, tags with no consent settings. Reads Meta, TikTok, Snapchat and LinkedIn code, and GA4 and gallery template tags that have an event name parameter |
 | Browser and server events | JSON list of events | Missing or duplicate `event_id` (deduplication), server events with no browser twin, non standard event names and wrong case, purchases with a missing or non numeric value or a bad currency |
+| Server payload (CAPI) | The JSON body sent to the Conversions API | `event_time` in milliseconds or older than 7 days, missing `event_id` or `action_source`, a repeated `event_id`, plain text or empty-value hashes, hashed `fbp`/`fbc`, a private IP instead of the visitor IP, missing user agent or source URL, `test_event_code` left on, purchase value, currency and `content_ids` |
 | Product catalog | CSV feed | Missing columns, empty required values, duplicate IDs, prices not in the "19.99 EUR" format, non https links, invalid availability or condition values (Meta) |
 
 ![Events check](docs/events-check.png)

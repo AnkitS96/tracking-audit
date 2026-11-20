@@ -149,6 +149,64 @@
     return out;
   }
 
+  // ---------- Server events (Conversions API payload) ----------
+  const SHA = /^[a-f0-9]{64}$/i;
+  const EMPTY_SHA = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+  const HASHED = ['em', 'ph', 'fn', 'ln', 'ge', 'db', 'ct', 'st', 'zp', 'country'];
+  const ACTION_SOURCES = ['website', 'app', 'email', 'phone_call', 'chat', 'physical_store', 'system_generated', 'business_messaging', 'other'];
+  const PRIVATE_IP = /^(10.|127.|192.168.|172.(1[6-9]|2d|3[01]).|169.254.|::1$|f[cd][0-9a-f]{2}:)/i;
+
+  // input: the body sent to the Conversions API ({"data":[...]}) or just the data array. "now" (seconds) is for tests.
+  function auditServer(input, now) {
+    const out = [];
+    const nowS = now || Math.floor(Date.now() / 1000);
+    const events = Array.isArray(input) ? input : input && input.data;
+    if (!Array.isArray(events) || !events.length) return [f('warning', 'no-events', 'No events found. Expected {"data":[...]} as sent to the Conversions API.')];
+    if (!Array.isArray(input) && input.test_event_code) out.push(f('error', 'test-event-code', 'test_event_code is set. Events sent with it show up in the Test Events tab and are not meant for production. Remove it when you go live.'));
+    const seen = {};
+    events.forEach((e, i) => {
+      const where = `event ${i + 1} (${e.event_name || 'no name'})`;
+      const add = (sev, rule, msg) => out.push(f(sev, rule, msg, where));
+      if (!e.event_name) add('error', 'no-event-name', 'event_name is missing.');
+      const t = Number(e.event_time);
+      if (!e.event_time || !isFinite(t)) add('error', 'event-time', 'event_time is missing or not a number (it must be Unix time in seconds).');
+      else if (t > 1e11) add('error', 'event-time-ms', 'event_time looks like milliseconds. It must be in seconds.');
+      else if (nowS - t > 7 * 86400) add('error', 'event-time-old', 'event_time is more than 7 days old. Meta rejects events that old.');
+      else if (t - nowS > 300) add('warning', 'event-time-future', 'event_time is in the future.');
+      if (!e.event_id) add('error', 'no-event-id', 'event_id is missing, so this event cannot be matched to the browser event and will count twice.');
+      else { const k = e.event_name + '|' + e.event_id; if (seen[k]) add('error', 'duplicate-event-id', `event_id "${e.event_id}" is already used by event ${seen[k]} with the same name. Meta keeps one. If this is a retry, send the same event once.`); else seen[k] = i + 1; }
+      if (!e.action_source) add('error', 'no-action-source', 'action_source is missing (for a web shop use "website").');
+      else if (!ACTION_SOURCES.includes(e.action_source)) add('error', 'bad-action-source', `action_source "${e.action_source}" is not one of: ${ACTION_SOURCES.join(', ')}.`);
+      const u = e.user_data;
+      if (!u || !Object.keys(u).length) { add('error', 'no-user-data', 'user_data is missing, so the event cannot be matched to a person.'); return; }
+      if (e.action_source === 'website') {
+        if (!e.event_source_url) add('error', 'no-source-url', 'event_source_url is required for website events.');
+        if (!u.client_user_agent) add('error', 'no-user-agent', 'client_user_agent is required for website events.');
+        if (!u.client_ip_address) add('error', 'no-ip', 'client_ip_address is required for website events.');
+        else if (PRIVATE_IP.test(String(u.client_ip_address))) add('error', 'private-ip', 'client_ip_address is a private or local address, so it is probably your server or proxy, not the visitor. Pass on the visitor IP.');
+      }
+      HASHED.forEach((k) => [].concat(u[k] === undefined ? [] : u[k]).forEach((v) => {
+        if (String(v).toLowerCase() === EMPTY_SHA) add('error', 'hashed-empty', `${k} is the hash of an empty value. Leave the field out when you have no data.`);
+        else if (!SHA.test(String(v))) add('error', 'not-hashed', `${k} is not a SHA-256 hash (64 hex characters). Hash it after trimming and lowercasing. Never send it as plain text.`);
+      }));
+      ['fbp', 'fbc'].forEach((k) => {
+        if (!u[k]) return;
+        if (SHA.test(String(u[k]))) add('error', 'hashed-cookie', `${k} must be sent as it is in the cookie, not hashed.`);
+        else if (!/^fb.d.d{10,13}.S+$/.test(String(u[k]))) add('warning', 'cookie-format', `${k} does not look like the cookie value (expected fb.1.<time>.<id>).`);
+      });
+      if (!['em', 'ph', 'external_id', 'fbp', 'fbc'].some((k) => u[k])) add('warning', 'weak-match', 'No email, phone, external_id, fbp or fbc. Match quality will be very low.');
+      else if (!u.em && !u.ph) add('info', 'no-email-phone', 'No email or phone. Matching relies on cookies and external_id only.');
+      const c = e.custom_data || {};
+      if (e.event_name === 'Purchase') {
+        if (typeof c.value !== 'number' || !isFinite(c.value)) add('error', 'purchase-value', 'Purchase value is missing or not a number.');
+        if (!/^[A-Z]{3}$/.test(c.currency || '')) add('error', 'purchase-currency', 'Purchase currency is missing or not a 3 letter uppercase code (for example EUR).');
+        if (!c.content_ids && !c.contents) add('warning', 'no-content-ids', 'No content_ids or contents. Catalog and dynamic ads cannot use this purchase.');
+      }
+    });
+    out.push(f('info', 'server-summary', `Checked ${events.length} server event(s).`));
+    return out;
+  }
+
   // ---------- Catalog feed (CSV) ----------
   const REQUIRED = {
     meta: ['id', 'title', 'description', 'availability', 'condition', 'price', 'link', 'image_link', 'brand'],
@@ -205,7 +263,7 @@
     return s;
   }
 
-  const api = { auditGtm, auditEvents, auditCatalog, parseCsv, summarize };
+  const api = { auditGtm, auditEvents, auditServer, auditCatalog, parseCsv, summarize };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TrackingAudit = api;
 })(typeof window !== 'undefined' ? window : globalThis);

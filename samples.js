@@ -42,7 +42,21 @@
     'SKU-2,Leather belt,Belt,out of stock,new,35.00 EUR,https://shop.example/belt,https://shop.example/img/belt.jpg,Northwind',
   ].join('\n');
 
-  const samples = { gtm, events, catalogMeta };
+  const now = Math.floor(Date.now() / 1000);
+  const EM = '1add7f5415d97550c5c3bb7f2eab072c48dcc77d5b66d1ff41ee466cbd01530d', PH = '536afd523e19dc83fccba822ef5e4ca646111314aaf0aa286667c5bea18dd70b';
+  const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+  const good = { event_name: 'Purchase', event_time: now - 60, event_id: 'o-2001', action_source: 'website', event_source_url: 'https://shop.example/thank-you',
+    user_data: { em: EM, ph: PH, fbp: 'fb.1.1700000000000.123456789', client_ip_address: '203.0.113.7', client_user_agent: ua },
+    custom_data: { value: 49.9, currency: 'EUR', content_ids: ['SKU-1'], content_type: 'product' } };
+  const server = { test_event_code: 'TEST12345', data: [
+    good,
+    { event_name: 'Purchase', event_time: now * 1000, event_id: 'o-2002', action_source: 'website', event_source_url: 'https://shop.example/thank-you',
+      user_data: { em: 'anna@shop.example', fbp: EM, client_ip_address: '10.0.0.12', client_user_agent: ua }, custom_data: { value: '30.00', currency: 'eur' } },
+    { event_name: 'Lead', event_time: now - 10 * 86400, user_data: { client_ip_address: '203.0.113.7', client_user_agent: ua } },
+    Object.assign({}, good),
+  ] };
+
+  const samples = { gtm, events, server, catalogMeta };
   if (typeof module !== 'undefined' && module.exports) module.exports = samples;
   else root.SAMPLES = samples;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -33,6 +33,24 @@ assert(has(ev, 'no-event-id'), 'missing event_id');
 assert(has(ev, 'event-name', 'CompletePayment'), 'tiktok purchase alias');
 assert(has(ev, 'dedup-summary', '1 browser/server pairs'), 'one deduplicated pair');
 
+// Server payload
+const sv = A.auditServer(S.server);
+assert(has(sv, 'test-event-code'), 'test_event_code left on');
+assert(has(sv, 'event-time-ms'), 'time in ms');
+assert(has(sv, 'event-time-old'), 'time too old');
+assert(has(sv, 'not-hashed', 'em is not'), 'plain email');
+assert(has(sv, 'hashed-cookie', 'fbp'), 'hashed fbp');
+assert(has(sv, 'private-ip'), 'private ip');
+assert(has(sv, 'no-action-source'), 'no action_source');
+assert(has(sv, 'no-event-id'), 'no event_id');
+assert(has(sv, 'purchase-value'), 'value as string');
+assert(has(sv, 'purchase-currency'), 'lowercase currency');
+assert(has(sv, 'no-content-ids'), 'no content ids');
+assert(has(sv, 'duplicate-event-id', 'o-2001'), 'retry duplicate');
+assert(!sv.some((x) => x.where.startsWith('event 1 ') && x.severity === 'error'), 'good event has no errors');
+assert(!JSON.stringify(sv).includes('anna@shop.example'), 'findings never echo personal data');
+assert(has(A.auditServer([{ event_name: 'Lead', event_time: 5, user_data: { em: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' } }], 100), 'hashed-empty'), 'hash of empty value');
+
 // Catalog
 const cat = A.auditCatalog(S.catalogMeta, 'meta');
 assert(has(cat, 'bad-value', 'available'), 'bad availability');

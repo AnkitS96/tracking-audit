@@ -42,6 +42,7 @@
   <div class="tabs" role="tablist">
     <button role="tab" aria-selected="true" data-tab="gtm">GTM container</button>
     <button role="tab" aria-selected="false" data-tab="events">Browser and server events</button>
+    <button role="tab" aria-selected="false" data-tab="server">Server payload (CAPI)</button>
     <button role="tab" aria-selected="false" data-tab="catalog">Product catalog</button>
   </div>
 
@@ -55,6 +56,13 @@
   <section class="panel" id="events" hidden>
     <p class="hint">A JSON list of events with platform, event_name, source ("browser" or "server"), event_id, value and currency. Checks deduplication, event names, and purchase values.</p>
     <textarea data-input placeholder='[{"platform":"meta","event_name":"Purchase","source":"browser","event_id":"o-1","value":49.9,"currency":"EUR"}]'></textarea>
+    <div class="row"><input type="file" accept=".json" data-file><button data-sample>Load sample</button><button class="primary" data-run>Run audit</button></div>
+    <div data-out></div>
+  </section>
+
+  <section class="panel" id="server" hidden>
+    <p class="hint">The JSON body you send to the Conversions API ({"data":[...]}). Checks event time, action source, event_id, hashing, IP and user agent, cookies, test_event_code and purchase fields. Use made up data only: it contains personal data fields.</p>
+    <textarea data-input placeholder='{"data":[{"event_name":"Purchase","event_time":1700000000,"event_id":"o-1","action_source":"website"}]}'></textarea>
     <div class="row"><input type="file" accept=".json" data-file><button data-sample>Load sample</button><button class="primary" data-run>Run audit</button></div>
     <div data-out></div>
   </section>
@@ -81,11 +89,13 @@
   const runners = {
     gtm: (text) => A.auditGtm(JSON.parse(text)),
     events: (text) => A.auditEvents(JSON.parse(text)),
+    server: (text) => A.auditServer(JSON.parse(text)),
     catalog: (text) => A.auditCatalog(text, document.getElementById('platform').value),
   };
   const samples = {
     gtm: () => JSON.stringify(S.gtm, null, 2),
     events: () => JSON.stringify(S.events, null, 2),
+    server: () => JSON.stringify(S.server, null, 2),
     catalog: () => S.catalogMeta,
   };
 
