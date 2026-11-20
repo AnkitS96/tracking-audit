@@ -64,6 +64,18 @@ const variantCsv = 'id,price\nSHIRT-M,10.00 EUR\nSHIRT-L,10.00 EUR';
 assert(has(A.auditMatch([{ event_name: 'Purchase', custom_data: { content_ids: ['SHIRT'], content_type: 'product' } }], variantCsv, 'meta'), 'id-not-in-catalog', 'SHIRT-M'), 'product id versus variant id hint');
 assert(has(A.auditMatch({ data: [{ event_name: 'Purchase', custom_data: { content_ids: [123], content_type: 'product' } }] }, 'id,price\n123,5 EUR', 'meta'), 'match-summary', '1 of 1'), 'numeric id and CAPI body');
 
+// Totals against real orders
+const tt = A.auditTotals(S.totals);
+const on = (rule, name) => tt.some((x) => x.rule === rule && x.where === name);
+assert(on('dedup-failing', 'meta'), 'meta counted twice');
+assert(on('count-ok', 'tiktok'), 'tiktok in range');
+assert(on('value-high', 'snapchat'), 'snap value includes tax');
+assert(on('low-count', 'ga4'), 'ga4 low');
+assert(on('undercount', 'linkedin'), 'linkedin undercount');
+assert(!on('overcount', 'meta'), 'dedup message replaces generic overcount');
+assert(A.auditTotals({ shop: { orders: 100 }, platforms: { a: { purchases: 250 } } }).some((x) => x.rule === 'overcount' && x.message.includes('2.5x')), '2.5x story');
+assert(A.auditTotals({ shop: { orders: 0 }, platforms: { a: { purchases: 1 } } })[0].rule === 'no-totals', 'zero orders');
+
 // Catalog
 const cat = A.auditCatalog(S.catalogMeta, 'meta');
 assert(has(cat, 'bad-value', 'available'), 'bad availability');

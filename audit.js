@@ -300,13 +300,40 @@
     return out;
   }
 
+  // ---------- Totals: platform purchases against real orders ----------
+  // input: {"shop":{"orders":N,"revenue":N},"platforms":{"meta":{"purchases":N,"value":N,"browser":N,"server":N}}}
+  // Thresholds are rules of thumb, not platform rules.
+  function auditTotals(input) {
+    const out = [];
+    const shop = input && input.shop, plats = input && input.platforms;
+    if (!shop || !(shop.orders > 0) || !plats || !Object.keys(plats).length) return [f('warning', 'no-totals', 'Expected {"shop":{"orders":100,"revenue":5000},"platforms":{"meta":{"purchases":100,"value":5000}}}. Orders must be above 0.')];
+    const x = (r) => Math.round(r * 10) / 10 + 'x', pct = (r) => Math.round(r * 100) + '%';
+    Object.entries(plats).forEach(([name, p]) => {
+      const r = Number(p.purchases) / shop.orders;
+      if (!isFinite(r)) { out.push(f('error', 'bad-number', `${name}: purchases is missing or not a number.`, name)); return; }
+      const dedupFail = p.browser >= 0.8 * shop.orders && p.server >= 0.8 * shop.orders && p.purchases > 1.5 * shop.orders;
+      if (dedupFail) out.push(f('error', 'dedup-failing', `${name} received ${p.browser} browser and ${p.server} server purchases for ${shop.orders} real orders and counted ${p.purchases} (${x(r)}). Browser and server events are not being deduplicated. Check that both send the same event_name and event_id.`, name));
+      else if (r > 1.05) out.push(f('error', 'overcount', `${name} reports ${p.purchases} purchases for ${shop.orders} real orders (${x(r)}). It cannot see more purchases than the shop took, so something is counted twice: a duplicate tag, a thank-you page reload, or browser and server events without a shared event_id.`, name));
+      else if (r < 0.4) out.push(f('error', 'undercount', `${name} reports only ${pct(r)} of real orders. Most purchases are not arriving: check the purchase trigger, consent handling and whether the server side events are being sent.`, name));
+      else if (r < 0.7) out.push(f('warning', 'low-count', `${name} reports ${pct(r)} of real orders. Usual causes: consent banner, ad blockers, no server side events, or the purchase tag missing on some payment methods.`, name));
+      else out.push(f('info', 'count-ok', `${name}: purchases are ${pct(r)} of real orders, which is in the normal range.`, name));
+      if (shop.revenue > 0 && p.value !== undefined && r >= 0.7 && r <= 1.05) {
+        const vr = Number(p.value) / shop.revenue;
+        if (vr > 1.1) out.push(f('warning', 'value-high', `${name} value is ${pct(vr)} of shop revenue although the order count fits. Is tax or shipping included, or is the currency wrong?`, name));
+        else if (vr < 0.9) out.push(f('warning', 'value-low', `${name} value is only ${pct(vr)} of shop revenue although the order count fits. Some purchases may be sent with a missing or zero value.`, name));
+      }
+    });
+    out.push(f('info', 'totals-note', 'Use all purchase events received (for Meta, Events Manager), not ad attributed conversions, for the same period and currency as the shop figures. Shop orders should exclude cancelled and test orders.'));
+    return out;
+  }
+
   function summarize(findings) {
     const s = { error: 0, warning: 0, info: 0 };
     findings.forEach((x) => s[x.severity]++);
     return s;
   }
 
-  const api = { auditGtm, auditEvents, auditServer, auditMatch, auditCatalog, parseCsv, summarize };
+  const api = { auditGtm, auditEvents, auditServer, auditMatch, auditTotals, auditCatalog, parseCsv, summarize };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TrackingAudit = api;
 })(typeof window !== 'undefined' ? window : globalThis);

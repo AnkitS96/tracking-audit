@@ -63,7 +63,14 @@
     { event_name: 'Purchase', custom_data: { content_ids: ['SKU-1'], value: 49.9, currency: 'EUR' } },
     { event_name: 'AddToCart', custom_data: { value: 10, currency: 'EUR' } },
   ];
-  const samples = { gtm, events, server, match, catalogMeta };
+  const totals = { shop: { orders: 100, revenue: 5000 }, platforms: {
+    meta: { purchases: 200, value: 10000, browser: 100, server: 100 },
+    tiktok: { purchases: 92, value: 4600 },
+    snapchat: { purchases: 100, value: 5900 },
+    ga4: { purchases: 55, value: 2000 },
+    linkedin: { purchases: 20, value: 900 },
+  } };
+  const samples = { gtm, events, server, match, totals, catalogMeta };
   if (typeof module !== 'undefined' && module.exports) module.exports = samples;
   else root.SAMPLES = samples;
 })(typeof window !== 'undefined' ? window : globalThis);
