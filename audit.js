@@ -30,6 +30,7 @@
     const fired = {}; // platform|event|trigger -> tag names
     const inits = {}; // platform|pixel id -> tag names
     const notRead = [];
+    const noConsent = [];
     tags.forEach((tag) => {
       const params = tag.parameter || [];
       const html = params.filter((p) => p.key === 'html').map((p) => p.value).join('\n');
@@ -75,11 +76,10 @@
           if (everyPage) out.push(f('error', 'trigger-too-broad', `Tag "${tag.name}" sends ${e.platform} "${e.event}" on trigger "${trig(tid)}", which has no condition, so it fires on every page. Use a trigger that only fires on the order confirmation.`, tag.name));
         });
       });
-      if (!tag.consentSettings || !tag.consentSettings.consentStatus || tag.consentSettings.consentStatus === 'NOT_SET') {
-        out.push(f('warning', 'no-consent-settings', `Tag "${tag.name}" has no consent settings. If the visitor has not agreed yet, it may still fire, which is a problem under GDPR and Consent Mode. Ignore this if a consent trigger already blocks it.`, tag.name));
-      }
+      if (!tag.consentSettings || !tag.consentSettings.consentStatus || tag.consentSettings.consentStatus === 'NOT_SET') noConsent.push(tag.name);
     });
 
+    if (noConsent.length) out.push(f('warning', 'no-consent-settings', `${noConsent.length} tag(s) have no consent settings: ${noConsent.map((n) => '"' + n + '"').join(', ')}. If the visitor has not agreed yet, they may still fire, which is a problem under GDPR and Consent Mode. Ignore this if a consent trigger already blocks them.`, noConsent.join(', ')));
     Object.entries(fired).forEach(([k, names]) => {
       if (names.length < 2) return;
       const [p, ev, tid] = k.split('|');

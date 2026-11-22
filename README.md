@@ -20,6 +20,10 @@ I built it because the same mistakes keep costing advertisers money: an event se
 
 ![Events check](docs/events-check.png)
 ![Catalog check](docs/catalog-check.png)
+![Server payload check](docs/server-check.png)
+![Events vs catalog check](docs/match-check.png)
+![Totals vs orders check](docs/totals-check.png)
+![Page source check](docs/source-check.png)
 
 ## Try it
 
