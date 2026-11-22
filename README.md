@@ -1,5 +1,7 @@
 # Tracking Audit
 
+**Live demo: https://ankits96.github.io/tracking-audit/**
+
 A small browser tool that checks pixel, Conversions API and product catalog setups and lists what is wrong in plain English. Open `index.html`, paste or upload your data, and press **Run audit**. It runs entirely in your browser and uploads nothing.
 
 I built it because the same mistakes keep costing advertisers money: an event sent twice, a server event that cannot be matched to the browser event, a catalog field that quietly gets products rejected. In my work as a technical support advisor for Meta advertisers I set up and checked Pixel, Conversions API and Tag Manager on 100+ shops a month. One shop had two tags counting every purchase, so its results looked about 2.5x better than they were. The first check here is built to catch exactly that pattern.
