@@ -327,13 +327,70 @@
     return out;
   }
 
+  // ---------- Page source (View page source): duplicate and misplaced tracking code ----------
+  // Reads what is hardcoded in the page. It cannot see tags that GTM adds later, so compare the pixel ids found here with the GTM export.
+  const LOADER_HINT = { meta: /connect\.facebook\.net/i, tiktok: /analytics\.tiktok\.com/i, snapchat: /sc-static\.net/i, linkedin: /snap\.licdn\.com/i };
+  const CONSENT_ATTR = /type\s*=\s*["']text\/(plain|x-consent)|data-cookieconsent|data-category|data-consent|optanon/i;
+  const CONSENT_DEFAULT = /fbq\s*\(\s*['"]consent['"]\s*,\s*['"]revoke|gtag\s*\(\s*['"]consent['"]\s*,\s*['"]default/i;
+
+  function auditSource(html) {
+    if (typeof html !== 'string' || html.length < 20 || !/<script|<html|<head/i.test(html)) return [f('warning', 'no-source', 'Paste the page source here (in the browser: right click, View page source, select all, copy).')];
+    const out = [];
+    const uniq = (a) => [...new Set(a)];
+    const count = (arr) => arr.reduce((o, k) => ((o[k] = (o[k] || 0) + 1), o), {});
+    const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/gi)].map((m) => ({ attrs: m[1], body: m[2] }));
+    const gtm = [...html.matchAll(/googletagmanager\.com\/gtm\.js\?id=(GTM-[A-Z0-9]+)|['"]script['"]\s*,\s*['"]\w+['"]\s*,\s*['"](GTM-[A-Z0-9]+)['"]/g)].map((m) => m[1] || m[2]);
+    const gtmIds = uniq(gtm);
+    const gtag = [...html.matchAll(/gtag\s*\(\s*['"]config['"]\s*,\s*['"]([A-Z]+-[A-Z0-9]+)/g)].map((m) => m[1]);
+    let pixelsFound = false;
+
+    PLATFORMS.forEach((p) => {
+      const inits = [...html.matchAll(p.init)].map((m) => m[1]);
+      const tracks = [...html.matchAll(p.track)].map((m) => m[1]);
+      if (!p.has.test(html) && !inits.length) return;
+      pixelsFound = true;
+      Object.entries(count(inits)).forEach(([id, n]) => { if (n > 1) out.push(f('error', 'multiple-init', `${p.id} pixel ${id} is initialised ${n} times in the page source. Every event it sends may be counted ${n}x.`, id)); });
+      if (uniq(inits).length > 1) out.push(f('info', 'several-pixels', `${uniq(inits).length} different ${p.id} pixel ids are in the page source (${uniq(inits).join(', ')}). Fine if intended, a leftover test pixel if not.`));
+      Object.entries(count(tracks)).forEach(([ev, n]) => {
+        if (/^pageview$/i.test(ev) && n > 1) out.push(f('error', 'pageview-twice', `${p.id} "${ev}" is in the page source ${n} times, so every page view counts ${n}x.`, ev));
+        else if (/^(purchase|completepayment|lead)$/i.test(ev) && n > 1) out.push(f('warning', 'conversion-twice', `${p.id} "${ev}" appears ${n} times in the page source. Check they cannot both fire on the same page.`, ev));
+      });
+      if (tracks.length) out.push(f('info', 'source-events', `${p.id} events hardcoded in the source: ${uniq(tracks).join(', ')}.`));
+      const ungated = scripts.some((s) => (p.has.test(s.body) || LOADER_HINT[p.id].test(s.attrs)) && !CONSENT_ATTR.test(s.attrs));
+      if (ungated && !CONSENT_DEFAULT.test(html)) out.push(f('warning', 'no-consent-gate', `${p.id} code is in the page source with no sign that it waits for consent. If it runs before the visitor agrees, that is a GDPR problem. Ignore this if a consent tool blocks it in a way this scan cannot see.`));
+    });
+    const loaders = (html.match(/connect\.facebook\.net\/[^"'\s]*fbevents\.js/g) || []).length;
+    if (loaders > 1) out.push(f('error', 'pixel-code-twice', `The Meta pixel loader (fbevents.js) appears ${loaders} times. The base code was pasted more than once.`));
+
+    Object.entries(count(gtm)).forEach(([id, n]) => { if (n > 1) out.push(f('error', 'gtm-twice', `Container ${id} is loaded ${n} times. All its tags will fire ${n}x.`, id)); });
+    if (gtmIds.length > 1) out.push(f('warning', 'several-containers', `${gtmIds.length} Tag Manager containers are on the page (${gtmIds.join(', ')}). The same pixel in two containers counts twice.`));
+    if (gtmIds.length && pixelsFound) out.push(f('warning', 'pixel-and-gtm', `Tracking code is hardcoded in the page AND Tag Manager (${gtmIds.join(', ')}) is present. Check the GTM export (the GTM tab) for the same pixel ids, or each event may be sent twice.`));
+    Object.entries(count(gtag)).forEach(([id, n]) => { if (n > 1) out.push(f('error', 'gtag-twice', `gtag config for ${id} appears ${n} times, so its page views count ${n}x.`, id)); });
+    if (gtmIds.length && gtag.some((g) => /^G-/.test(g))) out.push(f('warning', 'ga4-and-gtm', 'A GA4 gtag config is in the page and Tag Manager is present. If GTM also has a GA4 tag, page views double.'));
+
+    if (/cdn\.shopify\.com|Shopify\.theme/.test(html) && pixelsFound) out.push(f('info', 'shopify', 'This looks like a Shopify page. If the Facebook & Instagram sales channel is also connected, it adds its own pixel on top of any code you added.'));
+    const plugin = html.match(/wp-content\/plugins\/(facebook-for-woocommerce|pixelyoursite|official-facebook-pixel|pixel-caffeine)/);
+    if (plugin) out.push(f('warning', 'plugin-pixel', `The "${plugin[1]}" plugin is active and can load the pixel by itself. Check it is not also in your theme or in GTM.`));
+
+    // data layer
+    const pushes = [...html.matchAll(/dataLayer\.push\s*\(/g)].length;
+    const ecomPushes = (html.match(/dataLayer\.push\s*\(\s*\{[^}]*ecommerce\s*:/g) || []).length;
+    if (ecomPushes > 1 && !/ecommerce\s*:\s*null/.test(html)) out.push(f('warning', 'ecommerce-not-cleared', `${ecomPushes} data layer pushes carry an ecommerce object and none clears it first (dataLayer.push({ecommerce: null})). Old items can leak into the next event.`));
+    if (/['"]?(value|price)['"]?\s*:\s*['"]?\d+,\d{1,2}['"]?\s*[,}]/.test(html)) out.push(f('error', 'comma-decimal', 'A data layer value or price uses a comma as the decimal separator (for example 49,90). Platforms read it as text or as 49. Use a number with a dot (49.90).'));
+    else if (/['"]?(value|price)['"]?\s*:\s*['"]\d+(\.\d+)?['"]/.test(html)) out.push(f('warning', 'string-value', 'A data layer value or price is a text string (for example "49.90"). Send a number.'));
+    if (pushes) out.push(f('info', 'datalayer-pushes', `${pushes} data layer push(es) found in the page source.`));
+
+    if (!out.some((x) => x.severity === 'error' || x.severity === 'warning')) out.push(f('info', 'source-ok', 'No duplicate or misplaced tracking code found in the page source. Tags added later by Tag Manager are not visible here.'));
+    return out;
+  }
+
   function summarize(findings) {
     const s = { error: 0, warning: 0, info: 0 };
     findings.forEach((x) => s[x.severity]++);
     return s;
   }
 
-  const api = { auditGtm, auditEvents, auditServer, auditMatch, auditTotals, auditCatalog, parseCsv, summarize };
+  const api = { auditGtm, auditEvents, auditServer, auditMatch, auditTotals, auditSource, auditCatalog, parseCsv, summarize };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TrackingAudit = api;
 })(typeof window !== 'undefined' ? window : globalThis);

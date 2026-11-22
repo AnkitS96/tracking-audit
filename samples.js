@@ -70,7 +70,24 @@
     ga4: { purchases: 55, value: 2000 },
     linkedin: { purchases: 20, value: 900 },
   } };
-  const samples = { gtm, events, server, match, totals, catalogMeta };
+  const gtmSnippet = (id) => "<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','" + id + "');</script>";
+  const metaSnippet = "<script>!function(f,b,e,v,n,t,s){/* base code */}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');\nfbq('init','111222333'); fbq('track','PageView');</script>";
+  const source = [
+    '<!DOCTYPE html><html><head>',
+    gtmSnippet('GTM-ABC123'),
+    metaSnippet,
+    metaSnippet,
+    '<script async src="https://www.googletagmanager.com/gtag/js?id=G-ABCDE12345"></script>',
+    "<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-ABCDE12345');gtag('config','G-ABCDE12345');</script>",
+    '<link rel="stylesheet" href="/wp-content/plugins/pixelyoursite/style.css">',
+    '</head><body>',
+    "<script>dataLayer.push({event:'view_item',ecommerce:{items:[{item_id:'SKU-1',price:'49,90'}]}});</script>",
+    "<script>dataLayer.push({event:'purchase',ecommerce:{value:49.9,currency:'EUR'}});</script>",
+    "<script>fbq('track','Purchase',{value:49.9,currency:'EUR'});</script>",
+    gtmSnippet('GTM-XYZ789'),
+    '</body></html>',
+  ].join('\n');
+  const samples = { gtm, events, server, match, totals, source, catalogMeta };
   if (typeof module !== 'undefined' && module.exports) module.exports = samples;
   else root.SAMPLES = samples;
 })(typeof window !== 'undefined' ? window : globalThis);

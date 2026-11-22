@@ -76,6 +76,18 @@ assert(!on('overcount', 'meta'), 'dedup message replaces generic overcount');
 assert(A.auditTotals({ shop: { orders: 100 }, platforms: { a: { purchases: 250 } } }).some((x) => x.rule === 'overcount' && x.message.includes('2.5x')), '2.5x story');
 assert(A.auditTotals({ shop: { orders: 0 }, platforms: { a: { purchases: 1 } } })[0].rule === 'no-totals', 'zero orders');
 
+// Page source
+const src = A.auditSource(S.source);
+['multiple-init', 'pageview-twice', 'pixel-code-twice', 'several-containers', 'pixel-and-gtm', 'gtag-twice', 'ga4-and-gtm', 'plugin-pixel', 'ecommerce-not-cleared', 'comma-decimal', 'no-consent-gate'].forEach((r) => assert(has(src, r), 'source: ' + r));
+assert(has(src, 'multiple-init', '111222333'), 'pixel id named');
+assert(has(src, 'source-events', 'Purchase'), 'hardcoded events listed');
+const gtmOnly = "<html><head><script>(function(w,d,s,l,i){j.src='https://www.googletagmanager.com/gtm.js?id='+i;})(window,document,'script','dataLayer','GTM-AAA111');</script></head></html>";
+assert.strictEqual(A.summarize(A.auditSource(gtmOnly)).error, 0, 'one container is fine');
+assert(has(A.auditSource(gtmOnly), 'source-ok'), 'clean source');
+assert(has(A.auditSource(gtmOnly + gtmOnly), 'gtm-twice', 'GTM-AAA111'), 'same container twice');
+assert(!has(A.auditSource("<script type=\"text/plain\" data-category=\"marketing\">fbq('init','1234567890'); fbq('track','PageView');</script>"), 'no-consent-gate'), 'consent gated pixel');
+assert(has(A.auditSource('hello'), 'no-source'), 'not a page');
+
 // Catalog
 const cat = A.auditCatalog(S.catalogMeta, 'meta');
 assert(has(cat, 'bad-value', 'available'), 'bad availability');

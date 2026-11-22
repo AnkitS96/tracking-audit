@@ -45,6 +45,7 @@
     <button role="tab" aria-selected="false" data-tab="server">Server payload (CAPI)</button>
     <button role="tab" aria-selected="false" data-tab="match">Events vs catalog</button>
     <button role="tab" aria-selected="false" data-tab="totals">Totals vs orders</button>
+    <button role="tab" aria-selected="false" data-tab="source">Page source</button>
     <button role="tab" aria-selected="false" data-tab="catalog">Product catalog</button>
   </div>
 
@@ -85,6 +86,13 @@
     <div data-out></div>
   </section>
 
+  <section class="panel" id="source" hidden>
+    <p class="hint">Open the shop page (ideally the order confirmation page), right click, View page source, copy everything and paste it here. Finds pixel code pasted twice, the same pixel in the page and in Tag Manager, two containers, GA4 twice, plugins that add a pixel, no sign of waiting for consent, and data layer values that are text or use a comma. Tags that Tag Manager adds later are not visible here, so use the GTM tab for those.</p>
+    <textarea data-input placeholder="Paste the page source (HTML) here"></textarea>
+    <div class="row"><input type="file" accept=".html,.htm,.txt" data-file><button data-sample>Load sample</button><button class="primary" data-run>Run audit</button></div>
+    <div data-out></div>
+  </section>
+
   <section class="panel" id="catalog" hidden>
     <p class="hint">A product feed as CSV with a header row. Meta rules are the most complete; TikTok and Snapchat are starter rules.</p>
     <div class="row"><label for="platform">Platform</label>
@@ -110,6 +118,7 @@
     server: (text) => A.auditServer(JSON.parse(text)),
     match: (text, text2) => A.auditMatch(JSON.parse(text), text2, document.getElementById('platform2').value),
     totals: (text) => A.auditTotals(JSON.parse(text)),
+    source: (text) => A.auditSource(text),
     catalog: (text) => A.auditCatalog(text, document.getElementById('platform').value),
   };
   const samples = {
@@ -118,6 +127,7 @@
     server: () => JSON.stringify(S.server, null, 2),
     match: () => JSON.stringify(S.match, null, 2),
     totals: () => JSON.stringify(S.totals, null, 2),
+    source: () => S.source,
     catalog: () => S.catalogMeta,
   };
 
