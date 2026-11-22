@@ -81,6 +81,8 @@ const src = A.auditSource(S.source);
 ['multiple-init', 'pageview-twice', 'pixel-code-twice', 'several-containers', 'pixel-and-gtm', 'gtag-twice', 'ga4-and-gtm', 'plugin-pixel', 'ecommerce-not-cleared', 'comma-decimal', 'no-consent-gate'].forEach((r) => assert(has(src, r), 'source: ' + r));
 assert(has(src, 'multiple-init', '111222333'), 'pixel id named');
 assert(has(src, 'source-events', 'Purchase'), 'hardcoded events listed');
+assert(has(src, 'source-found', 'Tag Manager GTM-ABC123, GTM-XYZ789'), 'containers listed');
+assert(has(src, 'source-found', 'meta 111222333'), 'pixel id listed');
 const gtmOnly = "<html><head><script>(function(w,d,s,l,i){j.src='https://www.googletagmanager.com/gtm.js?id='+i;})(window,document,'script','dataLayer','GTM-AAA111');</script></head></html>";
 assert.strictEqual(A.summarize(A.auditSource(gtmOnly)).error, 0, 'one container is fine');
 assert(has(A.auditSource(gtmOnly), 'source-ok'), 'clean source');

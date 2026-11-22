@@ -343,12 +343,14 @@
     const gtmIds = uniq(gtm);
     const gtag = [...html.matchAll(/gtag\s*\(\s*['"]config['"]\s*,\s*['"]([A-Z]+-[A-Z0-9]+)/g)].map((m) => m[1]);
     let pixelsFound = false;
+    const found = [];
 
     PLATFORMS.forEach((p) => {
       const inits = [...html.matchAll(p.init)].map((m) => m[1]);
       const tracks = [...html.matchAll(p.track)].map((m) => m[1]);
       if (!p.has.test(html) && !inits.length) return;
       pixelsFound = true;
+      found.push(p.id + (inits.length ? ' ' + uniq(inits).join(', ') : ' (code, no id read)'));
       Object.entries(count(inits)).forEach(([id, n]) => { if (n > 1) out.push(f('error', 'multiple-init', `${p.id} pixel ${id} is initialised ${n} times in the page source. Every event it sends may be counted ${n}x.`, id)); });
       if (uniq(inits).length > 1) out.push(f('info', 'several-pixels', `${uniq(inits).length} different ${p.id} pixel ids are in the page source (${uniq(inits).join(', ')}). Fine if intended, a leftover test pixel if not.`));
       Object.entries(count(tracks)).forEach(([ev, n]) => {
@@ -380,7 +382,10 @@
     else if (/['"]?(value|price)['"]?\s*:\s*['"]\d+(\.\d+)?['"]/.test(html)) out.push(f('warning', 'string-value', 'A data layer value or price is a text string (for example "49.90"). Send a number.'));
     if (pushes) out.push(f('info', 'datalayer-pushes', `${pushes} data layer push(es) found in the page source.`));
 
-    if (!out.some((x) => x.severity === 'error' || x.severity === 'warning')) out.push(f('info', 'source-ok', 'No duplicate or misplaced tracking code found in the page source. Tags added later by Tag Manager are not visible here.'));
+    if (gtmIds.length) found.unshift('Tag Manager ' + gtmIds.join(', '));
+    if (gtag.length) found.push('gtag ' + uniq(gtag).join(', '));
+    out.push(f('info', 'source-found', found.length ? 'Found in the page source: ' + found.join('; ') + '.' : 'No pixel, Tag Manager or gtag code found in the page source. It may be added later by a script, a consent tool or the shop platform.'));
+    if (found.length && !out.some((x) => x.severity === 'error' || x.severity === 'warning')) out.push(f('info', 'source-ok', 'No duplicate or misplaced tracking code found in the page source. Tags added later by Tag Manager are not visible here.'));
     return out;
   }
 
